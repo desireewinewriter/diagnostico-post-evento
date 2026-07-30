@@ -253,8 +253,8 @@
 
   <div class="header">
     <p class="eyebrow">Diagnóstico gratuito para Mujeres del Vino · 5 preguntas</p>
-    <h1>¿En cuál de los 5 puntos se está enfriando tu seguimiento post evento?</h1>
-    <p class="header-desc">Respondé con honestidad pensando en tu último evento, cata o feria. Puede que hayas asistido o hayas creado el evento. La checklist, pretende ayudarte a identificar qué mejoras podés hacer en tus contactos con posibles clientes, ventas o gente que sume a tu negocio del vino. Hacela con honestidad hacia vos misma: es para que veas exactamente dónde está la fuga.</p>
+    <h1>¿En cuál de los 5 puntos estás dejando enfriar la experiencia que creaste en tu evento?</h1>
+    <p class="header-desc">Respondé con honestidad pensando en tu último evento, cata o feria. El diagnóstico está pensado para ayudarte a identificar qué ocurre cuando termina tu evento, con los contactos que ya te dijeron que sí. Para que continúes la conversación mientras ellos, continuan la experiencia. Hacela con honestidad hacia vos misma: es para que veas exactamente dónde está la fuga.</p>
   </div>
 
   <div class="instruccion">
@@ -336,7 +336,7 @@
   <div class="email-gate" id="email-gate">
     <p class="email-gate-tag">Listo</p>
     <h3>¿A qué correo querés que te mande el análisis completo?</h3>
-    <p>Dejame tu nombre y tu email. Ahí mismo te comento cuáles son los pasos que vienen para cerrar la fuga que encontraste hoy.</p>
+    <p>Dejame tu nombre y tu email. Ya tenés el panorama completo. Te muestro, punto por punto, dónde está la fuga. Y cuáles son los pasos que vienen para cerrar la fuga que encontraste hoy.</p>
     <div class="email-fields">
       <input type="text"  id="input-nombre" placeholder="Tu nombre" autocomplete="given-name" />
       <input type="email" id="input-email"  placeholder="Tu email" autocomplete="email" />
@@ -459,7 +459,7 @@
     setTimeout(() => gate.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   });
 
-  // PASO 2: enviar a MailerLite y mostrar resultado
+  // PASO 2: enviar al Worker (que a su vez habla con MailerLite) y mostrar resultado
   document.getElementById('btn-enviar').addEventListener('click', async () => {
     const nombre = document.getElementById('input-nombre').value.trim();
     const email  = document.getElementById('input-email').value.trim();
@@ -474,35 +474,27 @@
     btn.disabled = true;
     btn.textContent = 'Enviando...';
 
+    // Cálculo local, como respaldo si el Worker no responde
     const siCount = Object.values(respuestas).filter(v => v === 'si').length;
-    const nivel = siCount >= 4 ? 'alto' : siCount >= 2 ? 'medio' : 'bajo';
-    const grupoId = nivel === 'alto' ? GRUPO_ALTO : nivel === 'medio' ? GRUPO_MEDIO : GRUPO_BAJO;
+    let nivel = siCount >= 4 ? 'alto' : siCount >= 2 ? 'medio' : 'bajo';
 
     try {
-      const resp = await fetch('https://connect.mailerlite.com/api/subscribers', {
+      const resp = await fetch(WORKER_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${MAILERLITE_API_KEY}`
-        },
-        body: JSON.stringify({
-          email,
-          fields: {
-            name: nombre,
-            resultado_checklist: nivel,
-            puntos_si: siCount
-          },
-          groups: [grupoId]
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre, email, respuestas })
       });
 
-      if (!resp.ok) {
-        const errBody = await resp.json().catch(() => null);
-        console.error('MailerLite rechazó la petición:', resp.status, errBody);
+      if (resp.ok) {
+        const data = await resp.json();
+        // Usamos el nivel que calculó el Worker, para que coincida con lo que se guardó en MailerLite
+        if (data && data.nivel) nivel = data.nivel;
+      } else {
+        console.error('El Worker respondió con error:', resp.status);
       }
-    } catch(e) {
+    } catch (e) {
       // Si falla la conexión igual mostramos el resultado, pero queda logueado
-      console.error('MailerLite error de red:', e);
+      console.error('Error de red hacia el Worker:', e);
     }
 
     mostrarResultado(nivel, email);
